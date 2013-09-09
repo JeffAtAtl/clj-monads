@@ -37,15 +37,14 @@
 (use 'clojure.algo.monads)
 
 ; Witness:
-(def m-binding '(domonad identity-m
+(def alt-let '(domonad identity-m
   [a 2
    b (inc a)]
   (* a b)))
-(eval m-binding)
+(eval alt-let)
 
 ; Which expands to:
-; (clojure.algo.monads/with-monad identity-m (m-bind 2 (fn [a] (m-bind (inc a) (fn [b] (m-result (* a b)))))))
-(macroexpand-1 m-binding)
+(macroexpand-1 alt-let) ; => (clojure.algo.monads/with-monad identity-m (m-bind 2 (fn [a] (m-bind (inc a) (fn [b] (m-result (* a b)))))))
 
 ; In the case of the identity monad, identity-m, we have
  
@@ -133,7 +132,7 @@
            (+ a b)))
 ; The "natural lift" of + into this monad. Note that we have to specify the arity of the function we're lifting
 ; since there's no way to infer it.
-;
+
 ; Try it out:
 (+ 8 13)
 (maybe-+ 8 13)
@@ -146,11 +145,104 @@
 ; SEQ - non-determinism ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; Degression: functors, applicatives?
+; If `identity-m` was a functional version of `let`, `sequence-m` is a functional `for`
+; It deals with looping and iterating. You can view it as "composition with non-determinism"
+; since returning a list of values can be thought of as saying "any of these answers are
+; possible".
 
-; Example: knights tour
+; sequence monadic values will be represented by a sequence (typically a list), so we need two functions
+; result :: a -> [a]
+; bind :: [a] -> (a -> [b]) -> [b]
+; In this case,
+(defn sequence-result [v]
+  (list v))
+(defn sequence-bind [s f]
+  (apply concat (map f s)))
+; the `concat` call is there so that we don't pick up an extra layer of nesting in the proccess
+
+(for [a (range 5)
+      b (range a)]
+  (* a b))
+
+(def alt-for 
+  '(domonad sequence-m
+    [a (range 5)
+     b (range a)]
+    (* a b)))
+(eval alt-for)
+
+; Let's remind ourselves what that's actually doing:
+(macroexpand-1 alt-for) ; => (clojure.algo.monads/with-monad sequence-m (m-bind (range 5) (fn [a] (m-bind (range a) (fn [b] (m-result (* a b)))))))
+
+; Or, slightly re-written:
+; (m-bind (range 5) (fn [a]
+; (m-bind (range a) (fn [b]
+; (m-result (* a b))))))
+
+; The inner bind gives us essentially
+; (apply concat (map (fn [b] (list (* a b)) (range a))))
+; which is the "loop over range a". The outer bind handles the outer loop similarly.
+
+; Example: hierarchy traversal
+(with-monad sequence-m
+  (defn nth-parents
+    [n cls]
+    ( (m-chain (replicate n parents)) cls )))
+
+(nth-parents 0 (class []))
+(nth-parents 1 (class []))
+(nth-parents 2 (class []))
+
+; Example: knight moves
+; Here we use a monadic for to construct the board just because:
+(def board
+  (domonad set-m ; This uses sets instead of lists, but otherwise is identical to sequence-m
+    [row (range 1 9)
+     col (range 1 9)]
+    [row col]))
+(print board)
+
+(defn possible-moves [start]
+  (let [[x y] start]
+    (domonad set-m
+             [xdir [+ -]
+              xmov [1 2]
+              ydir [+ -]]
+             [(apply xdir [x xmov]) (apply ydir [y (- 3 xmov)])] ))); ymov = 2 if xmov = 1 and vice versa
+
+(possible-moves [0 0])
+
+(defn moves [start]
+  (clojure.set/select board (possible-moves start))) 
+
+(defn draw [squares]
+  (loop [i 1]
+    (when (< i 9)
+      (loop [j 1]
+        (when (< j 9)
+          (print (cond
+            (squares [i j]) "KK"
+            (odd? (+ i j))  "++"
+            :else           "  "))
+          (recur (inc j))))
+      (print "\n")
+      (recur (inc i))))
+  squares)
+
+(draw (moves [1 1]))
+(draw (moves [4 4]))
+
+(with-monad set-m
+  (defn nth-moves [n start]
+    ( (m-chain (replicate n moves)) start ))) 
+
+(draw (nth-moves 1 [1 1]))
+(draw (nth-moves 2 [1 1]))
+(draw (nth-moves 3 [1 1]))
 
 ; Transformers, probability and coins
+
+; Degression map, functors, and applicatives
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
 ; STATE - side-effects ;
