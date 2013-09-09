@@ -100,4 +100,60 @@
 (ident-mult -2)
 (maybe-mult -2)
 
-; MONAD FREEBIE #1 - sequencing
+; MONAD FREEBIE #1 - chaining
+
+; (m-chain [f g h]) is equivalent to
+; (fn [arg]
+;   (domonad
+;     [x (f arg)
+;      y (g x)
+;      z (h y)]
+;     z))
+; So `m-chain` is something like a monadic version of `comp`, feeding values through a sequence of functions:
+(with-monad maybe-m
+  (def mult-3 (m-chain [maybe-mult maybe-mult maybe-mult])))
+
+(mult-3 1)
+(mult-3 -7)
+
+; This gives us a convenient and pure way of propagating errors forward to the point where we can most naturally
+; handle them, without requiring any imperative throw / catch code
+
+
+; MONAD FREEBIE #2 - lifting
+
+(with-monad maybe-m
+  (def maybe-+ (m-lift 2 +)))
+
+; This is equivalent to
+(fn [x y]
+  (domonad maybe-m
+           [a x
+            b y]
+           (+ a b)))
+; The "natural lift" of + into this monad. Note that we have to specify the arity of the function we're lifting
+; since there's no way to infer it.
+;
+; Try it out:
+(+ 8 13)
+(maybe-+ 8 13)
+
+(defn failing-fn [] nil)
+(+ 1 (failing-fn))
+(maybe-+ 1 (failing-fn))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;
+; SEQ - non-determinism ;
+;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Degression: functors, applicatives?
+
+; Example: knights tour
+
+; Transformers, probability and coins
+
+;;;;;;;;;;;;;;;;;;;;;;;;
+; STATE - side-effects ;
+;;;;;;;;;;;;;;;;;;;;;;;;
+
+
