@@ -1,3 +1,5 @@
+
+
 ; Monads are a means of extending pure function composition
 ; You can think of them as "composition with *context*"
 ; A (by no means exhaustive) list of examples:
@@ -18,6 +20,11 @@
 ; - a data structure for storing extra computation context
 ; - a definition of result
 ; - a definition of bind
+
+
+
+
+
 
 
 ; Let's start by looking at the simplest monad, identity:
@@ -68,6 +75,12 @@
 ;  or "programmable semicolons". Let's take a look at several other (less trivial) monads:
 
 
+
+
+
+
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; MAYBE - failure propagation ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -104,6 +117,10 @@
 ; (ident-mult -2)
 ; (maybe-mult -2)
 
+
+
+
+
 ; MONAD FREEBIE #1 - chaining
 
 ; (m-chain [f g h]) is equivalent to
@@ -122,6 +139,11 @@
 
 ; This gives us a convenient and pure way of propagating errors forward to the point where we can most naturally
 ; handle them, without requiring any imperative throw / catch code
+
+
+
+
+
 
 
 ; MONAD FREEBIE #2 - lifting
@@ -145,6 +167,14 @@
 (defn failing-fn [] nil)
 ; (+ 1 (failing-fn))
 ; (lifted-+ 1 (failing-fn))
+
+
+
+
+
+
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 ; SEQ - non-determinism ;
@@ -188,16 +218,21 @@
 ; (apply concat (map (fn [b] (list (* a b)) (range a))))
 ; which is the "loop over range a". The outer bind handles the outer loop similarly.
 
+
+
+
 ; Example: hierarchy traversal
 ; `parents` :: Class -> [Class], so while we can't compose iterations natively, we can in the sequence monad
-(with-monad sequence-m
-  (defn nth-parents
-    [n cls]
+(defn nth-parents [n cls]
+  (with-monad sequence-m
     ( (m-chain (replicate n parents)) cls )))
 
 ; (nth-parents 0 (class []))
 ; (nth-parents 1 (class []))
 ; (nth-parents 2 (class []))
+
+
+
 
 ; Example: knight moves
 ; Here we use a monadic for to construct the board just because:
@@ -239,8 +274,8 @@
 ; (draw (moves [4 4]))
 
 ; Again, moves :: Square -> #{Squares} but we can use the monad to "compose" it with itself
-(with-monad set-m
-  (defn nth-moves [n start]
+(defn nth-moves [n start] 
+  (with-monad set-m
     ( (m-chain (replicate n moves)) start ))) 
 
 ; (draw (nth-moves 1 [1 1]))
@@ -249,7 +284,89 @@
 
 
 
-; Example: custom probability monad
+
+
+
+; MONAD FREEBIE #3 - fmap
+
+; Note that we can define a simple `map` entirely in terms of the monad:
+(defn alt-map [f col]
+  (domonad sequence-m
+    [x col]
+    (f x)))
+
+; This doesn't use `sequence-m` in any essential way, so we really have a
+; generic monadic map function:
+
+(domonad sequence-m
+  (m-fmap #(* % 2) (range 3)))
+
+(domonad maybe-m
+  (m-fmap #(* % 2) 7))
+
+(domonad maybe-m
+  (m-fmap #(* % 2) (failing-fn)))
+
+; In each case, we're extracting values from out of the monadic context before
+; applying the non-monadic function to them.
+
+
+
+
+; There are several other freebies, all seen in the (very readible)
+; https://github.com/clojure/algo.monads/blob/master/src/main/clojure/clojure/algo/monads.clj#L28
+; * m-join
+; * m-seq
+; * m-reduce
+; * m-until
+; * m-when
+; * m-when-not
+
+
+
+
+
+; Digression: Functors
+
+; As we've just seen, we can think of monadic values as being containers holding
+; things that we can map over. In other words, they are functors:
+
+; A functor is a constructor `f` along with a function `fmap` :: (a -> b) -> f(a) -> f(b)
+
+; The canonical example of a functor is list with fmap = map, but as we've seen,
+; `maybe-m` provides another. Binary trees are another fairly natural functor,
+; but they can include anything from function composition to exotic mathematical
+; invariants.
+
+; Technically, functor fmaps should satisfy
+; - fmap id = id
+; - (fmap f) . (fmap g) = fmap (f . g)
+; These follow from similar monad laws which we probably won't have time to get
+; into.
+
+
+
+
+; Note that instead of mapping a single function over a collection, the monad
+; structure of sequence-m allows us to do:
+(defn sequence-m-ap [functions values]
+  (domonad sequence-m
+    [f functions
+     v values]
+    (f v)))
+; which applies each function to each value in turn:
+(sequence-m-ap [#(* %1 2) #(* %1 %1)] (range 1 6))
+
+; A constructor with this sort of structure is called an Applicative
+; It's not hard to show that:
+;   Monad => Applicative => Functor
+; Though, unfortunately, we won't have many examples of interesting applicative
+; structures until we learn about the state monad.
+
+
+
+
+; Example: a custom probability monad
 ; As mentioned, we can view `sequence-m` as representing non-determinism. It isn't hard to define
 ; our own monad extending this idea and attaching a probability to each possible value:
 (defmonad prob-m
@@ -263,8 +380,9 @@
    ])
 ; (This monad is actually in clojure.contrib.probabilities.finite-distributions)
 
-; We can use this monad to investigate the classic (and counterintuitive) Monty Hall problem:
 
+
+; We can use this monad to investigate the classic (and counterintuitive) Monty Hall problem:
 (defn choose [coll]
   "Creates a uniform probability distribution from the given collection"
  (let [prob (/ 1 (count coll))]
@@ -301,12 +419,24 @@
 ; (monty-switch 3)
 ; (monty-switch 4)
 
-; MONAD FREEBIE #3 - map
 
-; Functors
+
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
 ; STATE - side-effects ;
 ;;;;;;;;;;;;;;;;;;;;;;;;
 
-; Applicatives
+; We've seen how monads can act like a dsl where we specify imperative-looking
+; code, but it gets translated into pure functions behind the scenes. An
+; extension of that idea is the State monad.
+
+; So far, monadic values have been primative values, lists, or maps. In the
+; state monad, we think of building up procedures, represented by functions
+;   start-state -> [value end-state]
+; Each monadic composition should extend the procedure we're building, but the
+; process itself is still purely functional. In the end, we can "run" a stateful
+; procedure by feeding in a start state (typically represented by a map)
+
+; ...
