@@ -15,7 +15,14 @@
 ; * bind :: m(a) -> (a -> m(b)) -> m(b) - takes a value with extra monadic context and
 ;                                         feeds it through a function which does not a
 ;                                         priori know how to interpret that context
+;
+; So a monad consists of three ingredients:
+; - a data structure for storing extra computation context
+; - a definition of result
+; - a definition of bind
 
+
+; Let's start by looking at the simplest monad, identity:
 
 ; A not-so-evil (read: highly localized) use of state
 (let [a 2
@@ -122,7 +129,7 @@
 ; MONAD FREEBIE #2 - lifting
 
 (with-monad maybe-m
-  (def maybe-+ (m-lift 2 +)))
+  (def lifted-+ (m-lift 2 +)))
 
 ; This is equivalent to
 (fn [x y]
@@ -135,11 +142,11 @@
 
 ; Try it out:
 (+ 8 13)
-(maybe-+ 8 13)
+(lifted-+ 8 13)
 
 (defn failing-fn [] nil)
 (+ 1 (failing-fn))
-(maybe-+ 1 (failing-fn))
+(lifted-+ 1 (failing-fn))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 ; SEQ - non-determinism ;
@@ -184,6 +191,7 @@
 ; which is the "loop over range a". The outer bind handles the outer loop similarly.
 
 ; Example: hierarchy traversal
+; `parents` :: Class -> [Class], so while we can't compose iterations natively, we can in the sequence monad
 (with-monad sequence-m
   (defn nth-parents
     [n cls]
@@ -232,6 +240,7 @@
 (draw (moves [1 1]))
 (draw (moves [4 4]))
 
+; Again, moves :: Square -> #{Squares} but we can use the monad to "compose" it with itself
 (with-monad set-m
   (defn nth-moves [n start]
     ( (m-chain (replicate n moves)) start ))) 
@@ -240,12 +249,15 @@
 (draw (nth-moves 2 [1 1]))
 (draw (nth-moves 3 [1 1]))
 
-; Transformers, probability and coins
+; Example: custom probability monad
+; Monty hall example (stay vs. switch) with n doors
 
-; Degression map, functors, and applicatives
+; MONAD FREEBIE #3 - map
+
+; Functors
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
 ; STATE - side-effects ;
 ;;;;;;;;;;;;;;;;;;;;;;;;
 
-
+; Applicatives
