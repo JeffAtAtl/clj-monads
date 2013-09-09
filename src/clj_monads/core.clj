@@ -1,5 +1,3 @@
-(ns clj-monads.core)
-
 ; Monads are a means of extending pure function composition
 ; You can think of them as "composition with *context*"
 ; A (by no means exhaustive) list of examples:
@@ -101,10 +99,10 @@
 (def maybe-mult (partial monadize maybe-m))
 
 ; Try it out:
-(ident-mult 2)
-(maybe-mult 2)
-(ident-mult -2)
-(maybe-mult -2)
+; (ident-mult 2)
+; (maybe-mult 2)
+; (ident-mult -2)
+; (maybe-mult -2)
 
 ; MONAD FREEBIE #1 - chaining
 
@@ -119,8 +117,8 @@
 (with-monad maybe-m
   (def mult-3 (m-chain [maybe-mult maybe-mult maybe-mult])))
 
-(mult-3 1)
-(mult-3 -7)
+; (mult-3 1)
+; (mult-3 -7)
 
 ; This gives us a convenient and pure way of propagating errors forward to the point where we can most naturally
 ; handle them, without requiring any imperative throw / catch code
@@ -141,12 +139,12 @@
 ; since there's no way to infer it.
 
 ; Try it out:
-(+ 8 13)
-(lifted-+ 8 13)
+; (+ 8 13)
+; (lifted-+ 8 13)
 
 (defn failing-fn [] nil)
-(+ 1 (failing-fn))
-(lifted-+ 1 (failing-fn))
+; (+ 1 (failing-fn))
+; (lifted-+ 1 (failing-fn))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 ; SEQ - non-determinism ;
@@ -197,9 +195,9 @@
     [n cls]
     ( (m-chain (replicate n parents)) cls )))
 
-(nth-parents 0 (class []))
-(nth-parents 1 (class []))
-(nth-parents 2 (class []))
+; (nth-parents 0 (class []))
+; (nth-parents 1 (class []))
+; (nth-parents 2 (class []))
 
 ; Example: knight moves
 ; Here we use a monadic for to construct the board just because:
@@ -208,7 +206,7 @@
     [row (range 1 9)
      col (range 1 9)]
     [row col]))
-(print board)
+; (print board)
 
 (defn possible-moves [start]
   (let [[x y] start]
@@ -218,7 +216,7 @@
               ydir [+ -]]
              [(apply xdir [x xmov]) (apply ydir [y (- 3 xmov)])] ))); ymov = 2 if xmov = 1 and vice versa
 
-(possible-moves [0 0])
+; (possible-moves [0 0])
 
 (defn moves [start]
   (clojure.set/select board (possible-moves start))) 
@@ -237,20 +235,71 @@
       (recur (inc i))))
   squares)
 
-(draw (moves [1 1]))
-(draw (moves [4 4]))
+; (draw (moves [1 1]))
+; (draw (moves [4 4]))
 
 ; Again, moves :: Square -> #{Squares} but we can use the monad to "compose" it with itself
 (with-monad set-m
   (defn nth-moves [n start]
     ( (m-chain (replicate n moves)) start ))) 
 
-(draw (nth-moves 1 [1 1]))
-(draw (nth-moves 2 [1 1]))
-(draw (nth-moves 3 [1 1]))
+; (draw (nth-moves 1 [1 1]))
+; (draw (nth-moves 2 [1 1]))
+; (draw (nth-moves 3 [1 1]))
+
+
 
 ; Example: custom probability monad
-; Monty hall example (stay vs. switch) with n doors
+; As mentioned, we can view `sequence-m` as representing non-determinism. It isn't hard to define
+; our own monad extending this idea and attaching a probability to each possible value:
+(defmonad prob-m
+  [m-result (fn [v] {v 1})
+   m-bind (fn [mv f]
+            (letfn [(add-prob [dist [x p]]
+                      (assoc dist x (+ (get dist x 0) p)))]
+              (reduce add-prob {}
+                (for [[x p] mv [y q] (f x)]
+                  [y (* q p)]))))
+   ])
+; (This monad is actually in clojure.contrib.probabilities.finite-distributions)
+
+; We can use this monad to investigate the classic (and counterintuitive) Monty Hall problem:
+
+(defn choose [coll]
+  "Creates a uniform probability distribution from the given collection"
+ (let [prob (/ 1 (count coll))]
+   (into {} (map vector coll (repeat prob)))))
+
+(defn doors [n]
+  (set (map char (range 65 (+ 65 n)))))
+
+; (doors 3)
+; (choose (doors 3))
+
+(defn reveal [prize choice]
+  (if (= choice prize) :win :lose))
+
+(defn monty-stay [n]
+  "The probability of winning the Monty Hall game on n doors if you choose to stay"
+  (domonad prob-m
+           [prize  (choose (doors n))
+            choice (choose (doors n))]
+           (reveal prize choice)))
+
+; (monty-stay 3)
+; (monty-stay 4)
+
+(defn monty-switch [n]
+  "The probability of winning the Monty Hall game on n doors if you choose to switch"
+  (domonad prob-m
+           [prize        (choose (doors n))
+            first-choice (choose (doors n))
+            opened       (choose (disj (doors n) prize first-choice))
+            next-choice  (choose (disj (doors n) opened first-choice))]
+           (reveal prize next-choice)))
+
+; (monty-switch 3)
+; (monty-switch 4)
 
 ; MONAD FREEBIE #3 - map
 
