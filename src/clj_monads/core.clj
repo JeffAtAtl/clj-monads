@@ -439,4 +439,36 @@
 ; process itself is still purely functional. In the end, we can "run" a stateful
 ; procedure by feeding in a start state (typically represented by a map)
 
-; ...
+(defn average [k l]
+  "Performs finds the average of two stateful variables, storing the sum in the process"
+  (domonad state-m
+           [a (fetch-val k)
+            b (fetch-val l)
+            _ (set-val :sum (+ a b))
+            sum (fetch-val :sum)]
+           (/ sum 2)))
+
+(let [initial {:a 10, :b 20}
+      manip   (average :a :b)
+      [result final] (manip initial)]
+  {:result result, :final final})
+
+; Let's see how it accomplishes this (from the source):
+(defmonad state-m
+     [m-result  (fn m-result-state [v]
+                  (fn [s] [v s]))
+      m-bind    (fn m-bind-state [mv f]
+                  (fn [s]
+                    (let [[v ss] (mv s)]
+                      ((f v) ss))))
+     ])
+; Here we see that finding the state after a bound step function is a matter of checking
+; 1. the state after applying the operations represented by the monad value up to that point (mv)
+; 2. the result of the stateful operation (f v) applied to that state 
+
+
+; OTHER MATH THINGS
+; - m-plus and loggers
+;   - monoids
+; - Lenses
+; - 
