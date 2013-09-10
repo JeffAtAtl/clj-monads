@@ -34,7 +34,7 @@
       b (inc a)]
   (* a b))
 
-; We can dispel all traces of imperativism and write this purely functionally as
+; We can eradicate all traces of imperativism and write this purely functionally as
 ( (fn [a]
   ( (fn [b]
     (* a b)
@@ -130,7 +130,7 @@
 ;      y (g x)
 ;      z (h y)]
 ;     z))
-; So `m-chain` is something like a monadic version of `comp`, feeding values through a sequence of functions:
+; So `m-chain` is something like a monadic version of `->`, feeding values through a sequence of functions:
 (with-monad maybe-m
   (def mult-3 (m-chain [maybe-mult maybe-mult maybe-mult])))
 
@@ -290,22 +290,20 @@
 ; MONAD FREEBIE #3 - fmap
 
 ; Note that we can define a simple `map` entirely in terms of the monad:
-(defn alt-map [f col]
-  (domonad sequence-m
+(defn monad-map [m f col]
+  (domonad m
     [x col]
     (f x)))
 
-; This doesn't use `sequence-m` in any essential way, so we really have a
-; generic monadic map function:
+; When m is `sequence-m`, this is exactly map:
+(monad-map sequence-m 
+           #(* % 2) (range 3))
 
-(domonad sequence-m
-  (m-fmap #(* % 2) (range 3)))
-
-(domonad maybe-m
-  (m-fmap #(* % 2) 7))
-
-(domonad maybe-m
-  (m-fmap #(* % 2) (failing-fn)))
+; But it is a similar construction for any monadic value, viewed as a container:
+(monad-map maybe-m
+           #(* % 2) 7)
+(monad-map maybe-m
+           #(* % 2) (failing-fn))
 
 ; In each case, we're extracting values from out of the monadic context before
 ; applying the non-monadic function to them.
@@ -315,6 +313,7 @@
 
 ; There are several other freebies, all seen in the (very readible)
 ; https://github.com/clojure/algo.monads/blob/master/src/main/clojure/clojure/algo/monads.clj#L28
+; * m-map and m-fmap
 ; * m-join
 ; * m-seq
 ; * m-reduce
@@ -375,11 +374,24 @@
             (letfn [(add-prob [dist [x p]]
                       (assoc dist x (+ (get dist x 0) p)))]
               (reduce add-prob {}
-                (for [[x p] mv [y q] (f x)]
+                (for [[x p] mv 
+                      [y q] (f x)]
                   [y (* q p)]))))
    ])
 ; (This monad is actually in clojure.contrib.probabilities.finite-distributions)
 
+; Much like the functor rules, there are some laws that custom monads should satisfy:
+; (=
+;  (m-bind (m-result v) f)
+;  (f v))
+; 
+; (=
+;  (m-bind mv m-result)
+;  mv)
+; 
+; (=
+;  (m-bind (m-bind mv f) g)
+;  (m-bind mv #(m-bind (f %) g)))
 
 
 ; We can use this monad to investigate the classic (and counterintuitive) Monty Hall problem:
@@ -471,4 +483,4 @@
 ; - m-plus and loggers
 ;   - monoids
 ; - Lenses
-; - 
+
